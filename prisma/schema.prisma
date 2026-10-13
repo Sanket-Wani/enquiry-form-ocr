@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Enquiry {
+  id                   String        @id @default(uuid())
+  leadId               String?
+  status               String        @default("DRAFT") // DRAFT, PROCESSING, AWAITING_REVIEW, CONFIRMED, EXTRACTION_FAILED
+  crmSyncStatus        String        @default("NOT_SYNCED") // NOT_SYNCED, PENDING, SYNCED, FAILED
+  crmRecordId          String?
+  crmSyncError         String?
+  crmSyncedAt          DateTime?
+
+  // Physical Form Fields (1 - 20)
+  enquiryDate          String?       // 1. Enquiry Date
+  customerName         String        @default("") // 2. Customer Name (Validated)
+  contactNumber        String        @default("") // 3. Contact Number (Validated string)
+  emailId              String?       // 4. Email ID
+  occupation           String?       // 5. Self Employed, Salaried, Professional, Other
+  occupationOther      String?       // 6. Other occupation details
+  companyName          String?       // 7. Company Name
+  designation          String?       // 8. Designation
+  address              String?       // 9. Client Address
+  leadSource           String?       // 10. Newspaper, Website, Referral, Hoardings, Channel Partner, Other
+  leadSourceOther      String?       // 11. Lead Source Other
+  bookingTimeline      String?       // 12. Now, Within a week, Within a month, After a month or more
+  requiresBankFinance  String?       @default("Unknown") // 13. Yes, No, Unknown
+  hasClientSignature   Boolean       @default(false)     // 14. Signature present on paper
+  signatureReference   String?       // 15. Signature details or image reference
+  officeDate           String?       // 16. Office Date
+  officeTime           String?       // 17. Office Time
+  allocatedTo          String?       // 18. Allocated To
+  attendedBy           String?       // 19. Attended By
+  officeRemarks        String?       // 20. Office Remarks
+
+  // OCR & Document Storage
+  originalDocumentPath String        // Relative or absolute path in secure storage
+  originalDocumentName String        // Original filename uploaded
+  originalDocumentMime String        // image/png, image/jpeg, application/pdf
+  originalDocumentSize Int           // in bytes
+  sarvamJobId          String?       // Sarvam DocAI Job ID
+  sarvamRunId          String?       // Sarvam DocAI Run ID
+  rawExtraction        String?       // Raw JSON from Sarvam DocAI (Preserved separately!)
+  confidenceScores     String?       // JSON map of field -> confidence (0-1)
+  sourceAnnotations    String?       // JSON map of field -> sources
+
+  // Audit & Review
+  reviewedBy           String?       // Reviewer employee name or ID
+  confirmedAt          DateTime?     // Explicit confirmation timestamp
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  syncLogs             CrmSyncLog[]
+
+  @@index([contactNumber])
+  @@index([leadId])
+  @@index([status])
+  @@index([crmSyncStatus])
+  @@index([createdAt])
+}
+
+model CrmSyncLog {
+  id             String    @id @default(uuid())
+  enquiryId      String
+  enquiry        Enquiry   @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  idempotencyKey String    @unique
+  attemptNumber  Int       @default(1)
+  status         String    // PENDING, SUCCESS, FAILED
+  requestPayload String    // JSON payload sent to CRM
+  responsePayload String?  // JSON response or error from CRM
+  errorMessage   String?
+  attemptedAt    DateTime  @default(now())
+
+  @@index([enquiryId])
+}
