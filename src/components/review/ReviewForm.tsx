@@ -308,7 +308,7 @@ export default function ReviewForm({
     const res = cleanEmail(formData.emailId);
     if (res.changed) {
       setFormData((prev) => ({ ...prev, emailId: res.value }));
-      setFieldHints((prev) => ({ ...prev, emailId: "Auto-cleaned: spaces removed & suffix standardized" }));
+      setFieldHints((prev) => ({ ...prev, emailId: "Auto-cleaned: spaces removed" }));
       setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n.emailId; return n; }), 4000);
     }
   };

@@ -93,49 +93,6 @@ const ACRONYMS = new Set([
 ]);
 
 /**
- * Known Email Domain Misreadings & Corrections
- */
-const EMAIL_DOMAIN_MAP: Record<string, string> = {
-  "gmai.com": "gmail.com",
-  "gmial.com": "gmail.com",
-  "gamil.com": "gmail.com",
-  "gmaill.com": "gmail.com",
-  "gmaik.com": "gmail.com",
-  "g-mail.com": "gmail.com",
-  "googlemail.com": "gmail.com",
-  "gmailcom": "gmail.com",
-  "gmail.co": "gmail.com",
-  "gmail": "gmail.com",
-  "gemail.com": "gmail.com",
-
-  "yaho.com": "yahoo.com",
-  "yahooo.com": "yahoo.com",
-  "yahoocom": "yahoo.com",
-  "yaho.co.in": "yahoo.co.in",
-  "yahoo": "yahoo.com",
-
-  "hotmial.com": "hotmail.com",
-  "hotmai.com": "hotmail.com",
-  "hotmali.com": "hotmail.com",
-  "hotmailcom": "hotmail.com",
-  "hotmail": "hotmail.com",
-
-  "outlok.com": "outlook.com",
-  "outlock.com": "outlook.com",
-  "outlookcom": "outlook.com",
-  "outlook": "outlook.com",
-
-  "iclud.com": "icloud.com",
-  "icld.com": "icloud.com",
-  "icloud": "icloud.com",
-
-  "redif.com": "rediffmail.com",
-  "rediff.com": "rediffmail.com",
-  "rediffmial.com": "rediffmail.com",
-  "rediff": "rediffmail.com",
-};
-
-/**
  * Convert string to smart Title Case while preserving special acronyms and honorifics
  */
 export function toSmartTitleCase(str: string): string {
@@ -167,85 +124,21 @@ export function toSmartTitleCase(str: string): string {
 }
 
 /**
- * 1. Clean & Correct Email Address
+ * 1. Clean Email Address
  * - Strips all internal and external whitespace
- * - Converts to lowercase
- * - Repairs OCR at-sign misreadings ([at], (at), at, (c), @@)
- * - Fixes common domain typos (gmai.com -> gmail.com)
- * - Fixes comma instead of dot in domain
- * - Appends standard .com if domain is missing TLD
- * - If user entered email without @ but has handle, fixes with @gmail.com
+ * - Keeps original domain and characters exactly as written (spacing auto-correction only)
  */
 export function cleanEmail(rawEmail: string): { value: string; changed: boolean; reason?: string } {
   if (!rawEmail) return { value: "", changed: false };
-  let original = rawEmail.trim();
-  let email = original;
-
-  // 1. Remove all whitespace
-  email = email.replace(/\s+/g, "");
-
-  // 2. Remove angle brackets or quotes
-  email = email.replace(/^[<"']+|[>"']+$/g, "");
-
-  // 3. Lowercase
-  email = email.toLowerCase();
-
-  // 4. OCR misreadings of @ sign
-  email = email.replace(/\[at\]|\(at\)|_at_|©|@@+/gi, "@");
-
-  // 5. If comma was used instead of dot
-  email = email.replace(/,([a-z]{2,})/g, ".$1");
-
-  // 6. Fix domain typos
-  const parts = email.split("@");
-  if (parts.length === 2) {
-    let [localPart, domainPart] = parts;
-    // Clean local part: remove leading/trailing dots
-    localPart = localPart.replace(/^\.+|\.+$/g, "");
-
-    // Check domain corrections
-    if (EMAIL_DOMAIN_MAP[domainPart]) {
-      domainPart = EMAIL_DOMAIN_MAP[domainPart];
-    } else if (domainPart && !domainPart.includes(".")) {
-      // Missing TLD, e.g. "gmail" -> "gmail.com"
-      if (EMAIL_DOMAIN_MAP[domainPart + ".com"]) {
-        domainPart = EMAIL_DOMAIN_MAP[domainPart + ".com"];
-      } else {
-        domainPart = domainPart + ".com";
-      }
-    }
-    email = `${localPart}@${domainPart}`;
-  } else if (parts.length === 1 && email.length > 0) {
-    // No @ sign present. Check if domain name is attached directly, e.g. "sanketwanigmail.com"
-    const knownDomains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "rediffmail.com"];
-    let matchedDomain = false;
-    for (const kd of knownDomains) {
-      if (email.endsWith(kd) && email !== kd) {
-        const handle = email.slice(0, -kd.length);
-        email = `${handle}@${kd}`;
-        matchedDomain = true;
-        break;
-      }
-    }
-
-    if (!matchedDomain) {
-      // If user typed only handle, e.g. "sanketwani" in email field
-      // Standardize with suffix @gmail.com (common Indian default)
-      if (/^[a-z0-9._%+-]+$/.test(email)) {
-        email = `${email}@gmail.com`;
-      }
-    }
-  }
-
-  // Strip trailing periods or commas
-  email = email.replace(/[.,;:]+$/, "");
-
-  const changed = email !== original;
-  const reason = changed
-    ? "Removed spaces, lowercased, and standardized email suffix."
-    : undefined;
-
-  return { value: email, changed, reason };
+  const original = rawEmail;
+  // Keep ONLY the spacing auto-correction (strip spaces, tabs, newlines)
+  const cleaned = rawEmail.replace(/\s+/g, "").trim();
+  const changed = cleaned !== original;
+  return {
+    value: cleaned,
+    changed,
+    reason: changed ? "Removed spaces from email address." : undefined,
+  };
 }
 
 /**

@@ -10,17 +10,34 @@ export async function POST(request: NextRequest) {
     // Run through common-sense business auto-correction rules
     const { data: cleaned } = applyAutoCorrectionRules(rawBody);
 
-    // Validation
+    // Strict Validation for required and formatted fields
+    const fieldErrors: Record<string, string> = {};
+
     if (!cleaned.customerName || cleaned.customerName.trim().length === 0) {
-      return NextResponse.json(
-        { error: "Customer Name is required." },
-        { status: 422 }
-      );
+      fieldErrors.customerName = "Customer Name is required.";
     }
 
-    if (!cleaned.contactNumber || cleaned.contactNumber.trim().length < 10) {
+    const contactDigits = (cleaned.contactNumber || "").replace(/\D/g, "");
+    if (!contactDigits) {
+      fieldErrors.contactNumber = "Contact Number is required.";
+    } else if (contactDigits.length !== 10) {
+      fieldErrors.contactNumber = `Contact Number must be a valid 10-digit mobile number (currently ${contactDigits.length} digits).`;
+    }
+
+    const email = (cleaned.emailId || "").replace(/\s+/g, "").trim();
+    if (email) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(email) || email.includes(":") || email.includes("..")) {
+        fieldErrors.emailId = "Please enter a valid email address (e.g. name@domain.com).";
+      }
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
       return NextResponse.json(
-        { error: "Contact Number must be a valid 10-digit phone number." },
+        {
+          error: "Please correct the highlighted fields before submitting.",
+          fieldErrors,
+        },
         { status: 422 }
       );
     }

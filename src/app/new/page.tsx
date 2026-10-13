@@ -99,28 +99,94 @@ export default function NewEnquiryPage() {
     }
   };
 
-  // Smart onBlur Cleaners
+  // Helper to smoothly scroll to and focus an invalid field
+  const scrollToErrorField = (fieldKey: string) => {
+    setTimeout(() => {
+      const el = document.getElementById(`field-${fieldKey}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+    }, 50);
+  };
+
+  // Smart onBlur Cleaners & Live Validation
   const handleEmailBlur = () => {
-    if (!formData.emailId) return;
+    if (!formData.emailId) {
+      if (fieldErrors.emailId) {
+        setFieldErrors((prev) => {
+          const next = { ...prev };
+          delete next.emailId;
+          return next;
+        });
+      }
+      return;
+    }
     const res = cleanEmail(formData.emailId);
     if (res.changed) {
       setFormData((prev) => ({ ...prev, emailId: res.value }));
     }
+    const val = res.value.replace(/\s+/g, "").trim();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(val) || val.includes(":") || val.includes("..")) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        emailId: "Please enter a valid email address (e.g. name@domain.com)",
+      }));
+    } else {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.emailId;
+        return next;
+      });
+    }
   };
 
   const handlePhoneBlur = () => {
-    if (!formData.contactNumber) return;
+    if (!formData.contactNumber) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        contactNumber: "Contact Number is required.",
+      }));
+      return;
+    }
     const res = cleanContactNumber(formData.contactNumber);
     if (res.changed) {
       setFormData((prev) => ({ ...prev, contactNumber: res.value }));
     }
+    const digits = res.value.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        contactNumber: `Contact Number must be a valid 10-digit mobile number (currently ${digits.length} digits).`,
+      }));
+    } else {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.contactNumber;
+        return next;
+      });
+    }
   };
 
   const handleCustomerNameBlur = () => {
-    if (!formData.customerName) return;
+    if (!formData.customerName) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        customerName: "Customer Name is required.",
+      }));
+      return;
+    }
     const res = cleanCustomerName(formData.customerName);
     if (res.changed) {
       setFormData((prev) => ({ ...prev, customerName: res.value }));
+    }
+    if (formData.customerName.trim().length > 0) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.customerName;
+        return next;
+      });
     }
   };
 
@@ -318,13 +384,57 @@ export default function NewEnquiryPage() {
   // 2. Submit & Confirm Enquiry
   const handleSubmitEnquiry = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setFeedback(null);
     setFieldErrors({});
+
+    // Client-side validation:
+    const errors: Record<string, string> = {};
+
+    // 1. Customer Name (Required)
+    if (!formData.customerName || !formData.customerName.trim()) {
+      errors.customerName = "Customer Name is required.";
+    }
+
+    // 2. Contact Number (Required & exactly 10 digits)
+    const contactDigits = (formData.contactNumber || "").replace(/\D/g, "");
+    if (!contactDigits) {
+      errors.contactNumber = "Contact Number is required.";
+    } else if (contactDigits.length !== 10) {
+      errors.contactNumber = `Contact Number must be a valid 10-digit mobile number (currently ${contactDigits.length} digits).`;
+    }
+
+    // 3. Email ID (Optional, but if filled, must be valid format without illegal chars or spaces)
+    const emailVal = (formData.emailId || "").replace(/\s+/g, "").trim();
+    if (emailVal) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(emailVal) || emailVal.includes(":") || emailVal.includes("..")) {
+        errors.emailId = "Please enter a valid email address (e.g. name@domain.com).";
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFeedback({
+        type: "error",
+        text: "Please correct the highlighted fields before submitting.",
+      });
+
+      // Find first error and smoothly scroll to it
+      const order = ["customerName", "contactNumber", "emailId"];
+      const firstError = order.find((k) => errors[k]);
+      if (firstError) {
+        scrollToErrorField(firstError);
+      }
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       const payload = {
         ...formData,
+        contactNumber: contactDigits,
+        emailId: emailVal,
         enquiryId: scannedEnquiryId || undefined,
       };
 
@@ -339,7 +449,12 @@ export default function NewEnquiryPage() {
       if (!res.ok) {
         if (data.fieldErrors) {
           setFieldErrors(data.fieldErrors);
-          throw new Error("Please fill in the required fields highlighted in red.");
+          const order = ["customerName", "contactNumber", "emailId"];
+          const firstError = order.find((k) => data.fieldErrors[k]);
+          if (firstError) {
+            scrollToErrorField(firstError);
+          }
+          throw new Error("Please correct the highlighted fields before submitting.");
         }
         throw new Error(data.error || data.details || "Submission failed.");
       }
@@ -440,7 +555,7 @@ export default function NewEnquiryPage() {
       )}
 
       {/* MAIN FORM */}
-      <form onSubmit={handleSubmitEnquiry} className="space-y-6">
+      <form onSubmit={handleSubmitEnquiry} noValidate className="space-y-6">
         {/* Section 1: Customer Identification & Contact */}
         <div className="bg-white border border-neutral-200 rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex items-center gap-2 pb-2.5 border-b border-neutral-100">
@@ -484,20 +599,23 @@ export default function NewEnquiryPage() {
                 1. Customer Name <span className="text-red-500">*</span>
               </label>
               <input
+                id="field-customerName"
                 type="text"
-                required
                 placeholder="Full name (in English)"
                 value={formData.customerName}
                 onChange={(e) => handleChange("customerName", e.target.value)}
                 onBlur={handleCustomerNameBlur}
                 className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-none transition ${
                   fieldErrors.customerName
-                    ? "border-red-500 bg-red-50/50"
+                    ? "border-red-500 bg-red-50/50 ring-2 ring-red-200 text-red-900"
                     : "border-neutral-300 focus:border-neutral-900"
                 }`}
               />
               {fieldErrors.customerName && (
-                <p className="text-[11px] text-red-600 mt-1">{fieldErrors.customerName}</p>
+                <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span>{fieldErrors.customerName}</span>
+                </div>
               )}
             </div>
 
@@ -507,34 +625,50 @@ export default function NewEnquiryPage() {
                 2. Contact Number <span className="text-red-500">*</span>
               </label>
               <input
+                id="field-contactNumber"
                 type="text"
-                required
                 placeholder="10-digit mobile number"
                 value={formData.contactNumber}
                 onChange={(e) => handleChange("contactNumber", e.target.value)}
                 onBlur={handlePhoneBlur}
                 className={`w-full px-3 py-2 text-xs font-mono border rounded-lg focus:outline-none transition ${
                   fieldErrors.contactNumber
-                    ? "border-red-500 bg-red-50/50"
+                    ? "border-red-500 bg-red-50/50 ring-2 ring-red-200 text-red-900"
                     : "border-neutral-300 focus:border-neutral-900"
                 }`}
               />
               {fieldErrors.contactNumber && (
-                <p className="text-[11px] text-red-600 mt-1">{fieldErrors.contactNumber}</p>
+                <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span>{fieldErrors.contactNumber}</span>
+                </div>
               )}
             </div>
 
             {/* 3. Email ID */}
             <div>
-              <label className="block text-xs font-medium text-neutral-700 mb-1">3. Email Id</label>
+              <label className="block text-xs font-medium text-neutral-700 mb-1">
+                3. Email Id <span className="text-neutral-400 font-normal">(Optional)</span>
+              </label>
               <input
+                id="field-emailId"
                 type="text"
-                placeholder="customer@gmail.com"
+                placeholder="customer@domain.com"
                 value={formData.emailId}
                 onChange={(e) => handleChange("emailId", e.target.value)}
                 onBlur={handleEmailBlur}
-                className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:border-neutral-900 focus:outline-none transition"
+                className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-none transition ${
+                  fieldErrors.emailId
+                    ? "border-red-500 bg-red-50/50 ring-2 ring-red-200 text-red-900"
+                    : "border-neutral-300 focus:border-neutral-900"
+                }`}
               />
+              {fieldErrors.emailId && (
+                <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-600" />
+                  <span>{fieldErrors.emailId}</span>
+                </div>
+              )}
             </div>
 
             {/* 4. Occupation */}
