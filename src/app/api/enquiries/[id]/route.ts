@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { applyAutoCorrectionRules } from "@/services/autoCorrection";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -67,59 +68,35 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Enquiry record not found." }, { status: 404 });
     }
 
-    // Extract allowed editable fields
-    const {
-      enquiryDate,
-      leadId,
-      customerName,
-      contactNumber,
-      emailId,
-      occupation,
-      occupationOther,
-      companyName,
-      designation,
-      address,
-      leadSource,
-      leadSourceOther,
-      bookingTimeline,
-      requiresBankFinance,
-      hasClientSignature,
-      signatureReference,
-      officeDate,
-      officeTime,
-      allocatedTo,
-      attendedBy,
-      officeRemarks,
-      status,
-      reviewedBy,
-    } = body;
+    // Apply auto-correction rules to any submitted form fields
+    const { data: cleanedData } = applyAutoCorrectionRules(body);
 
     const updated = await prisma.enquiry.update({
       where: { id },
       data: {
-        ...(enquiryDate !== undefined && { enquiryDate }),
-        ...(leadId !== undefined && { leadId }),
-        ...(customerName !== undefined && { customerName }),
-        ...(contactNumber !== undefined && { contactNumber }),
-        ...(emailId !== undefined && { emailId }),
-        ...(occupation !== undefined && { occupation }),
-        ...(occupationOther !== undefined && { occupationOther }),
-        ...(companyName !== undefined && { companyName }),
-        ...(designation !== undefined && { designation }),
-        ...(address !== undefined && { address }),
-        ...(leadSource !== undefined && { leadSource }),
-        ...(leadSourceOther !== undefined && { leadSourceOther }),
-        ...(bookingTimeline !== undefined && { bookingTimeline }),
-        ...(requiresBankFinance !== undefined && { requiresBankFinance }),
-        ...(hasClientSignature !== undefined && { hasClientSignature }),
-        ...(signatureReference !== undefined && { signatureReference }),
-        ...(officeDate !== undefined && { officeDate }),
-        ...(officeTime !== undefined && { officeTime }),
-        ...(allocatedTo !== undefined && { allocatedTo }),
-        ...(attendedBy !== undefined && { attendedBy }),
-        ...(officeRemarks !== undefined && { officeRemarks }),
-        ...(status !== undefined && { status }),
-        ...(reviewedBy !== undefined && { reviewedBy }),
+        ...(body.enquiryDate !== undefined && { enquiryDate: cleanedData.enquiryDate }),
+        ...(body.leadId !== undefined && { leadId: cleanedData.leadId }),
+        ...(body.customerName !== undefined && { customerName: cleanedData.customerName }),
+        ...(body.contactNumber !== undefined && { contactNumber: cleanedData.contactNumber }),
+        ...(body.emailId !== undefined && { emailId: cleanedData.emailId }),
+        ...(body.occupation !== undefined && { occupation: cleanedData.occupation }),
+        ...(body.occupationOther !== undefined && { occupationOther: cleanedData.occupationOther }),
+        ...(body.companyName !== undefined && { companyName: cleanedData.companyName }),
+        ...(body.designation !== undefined && { designation: cleanedData.designation }),
+        ...(body.address !== undefined && { address: cleanedData.address }),
+        ...(body.leadSource !== undefined && { leadSource: cleanedData.leadSource }),
+        ...(body.leadSourceOther !== undefined && { leadSourceOther: cleanedData.leadSourceOther }),
+        ...(body.bookingTimeline !== undefined && { bookingTimeline: cleanedData.bookingTimeline }),
+        ...(body.requiresBankFinance !== undefined && { requiresBankFinance: cleanedData.requiresBankFinance }),
+        ...(body.hasClientSignature !== undefined && { hasClientSignature: cleanedData.hasClientSignature }),
+        ...(body.signatureReference !== undefined && { signatureReference: cleanedData.signatureReference }),
+        ...(body.officeDate !== undefined && { officeDate: cleanedData.officeDate }),
+        ...(body.officeTime !== undefined && { officeTime: cleanedData.officeTime }),
+        ...(body.allocatedTo !== undefined && { allocatedTo: cleanedData.allocatedTo }),
+        ...(body.attendedBy !== undefined && { attendedBy: cleanedData.attendedBy }),
+        ...(body.officeRemarks !== undefined && { officeRemarks: cleanedData.officeRemarks }),
+        ...(body.status !== undefined && { status: body.status }),
+        ...(body.reviewedBy !== undefined && { reviewedBy: body.reviewedBy }),
       },
     });
 

@@ -1,4 +1,5 @@
 import { readDocumentFile } from "@/lib/storage";
+import { applyAutoCorrectionRules, FieldCorrection } from "@/services/autoCorrection";
 
 const SARVAM_BASE_URL = "https://api.sarvam.ai";
 
@@ -29,6 +30,7 @@ export interface NormalizedEnquiryData {
   confidenceMap: Record<string, number>;
   sourceMap: Record<string, any[]>;
   isMockExtraction?: boolean;
+  corrections?: FieldCorrection[];
 }
 
 export interface SarvamExtractResponse {
@@ -392,7 +394,8 @@ export function normalizeExtractionResponse(
     return "Unknown";
   };
 
-  return {
+  // Extract raw string values from Sarvam
+  const rawValues = {
     enquiryDate: str(r.enquiry_date),
     leadId: str(r.lead_id),
     customerName: str(r.customer_name),
@@ -408,15 +411,23 @@ export function normalizeExtractionResponse(
     bookingTimeline: str(r.booking_timeline),
     requiresBankFinance: normBankFinance(r.requires_bank_finance),
     hasClientSignature: Boolean(r.has_client_signature),
-    signatureReference: r.has_client_signature ? "Detected on Client Signature line" : undefined,
+    signatureReference: r.has_client_signature ? "Detected on Client Signature line" : "",
     officeDate: str(r.office_date),
     officeTime: str(r.office_time),
     allocatedTo: str(r.allocated_to),
     attendedBy: str(r.attended_by),
     officeRemarks: str(r.office_remarks),
+  };
+
+  // Run through intelligent auto-correction & auto-form-filling rules
+  const autoCorrected = applyAutoCorrectionRules(rawValues);
+
+  return {
+    ...autoCorrected.data,
     confidenceMap,
     sourceMap,
     isMockExtraction: isMock || rawResults.job_id.startsWith("fixture_job_"),
+    corrections: autoCorrected.corrections,
   };
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncEnquiryToCrm } from "@/services/crm/adapter";
+import { applyAutoCorrectionRules } from "@/services/autoCorrection";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -28,12 +29,15 @@ const VALID_BANK_FINANCE = ["Yes", "No", "Unknown"];
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
-    const body = await request.json();
+    const rawBody = await request.json();
 
     const enquiry = await prisma.enquiry.findUnique({ where: { id } });
     if (!enquiry) {
       return NextResponse.json({ error: "Enquiry record not found." }, { status: 404 });
     }
+
+    // Apply auto-correction and standard business rules to form values before validation
+    const { data: cleanedData, corrections } = applyAutoCorrectionRules(rawBody);
 
     const {
       customerName,
@@ -57,8 +61,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       officeRemarks,
       enquiryDate,
       leadId,
-      reviewedBy,
-    } = body;
+    } = cleanedData;
+
+    const reviewedBy = rawBody.reviewedBy?.trim() || "Office Staff";
 
     // Strict Business Validation
     const errors: Record<string, string> = {};
@@ -130,7 +135,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         status: "CONFIRMED",
         leadId: finalLeadId,
         customerName: customerName.trim(),
-        contactNumber: cleanPhone,
+        contactNumber: contactNumber.trim(),
         emailId: emailId?.trim() || null,
         occupation: occupation || null,
         occupationOther: occupationOther?.trim() || null,

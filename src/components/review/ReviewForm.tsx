@@ -20,7 +20,21 @@ import {
   FileCheck,
   ShieldCheck,
   HelpCircle,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Check,
 } from "lucide-react";
+import {
+  applyAutoCorrectionRules,
+  cleanEmail,
+  cleanContactNumber,
+  cleanCustomerName,
+  cleanDate,
+  cleanTime,
+  cleanAddress,
+  FieldCorrection,
+} from "@/services/autoCorrection";
 
 interface ReviewFormProps {
   enquiry: any;
@@ -72,6 +86,50 @@ export default function ReviewForm({
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
+
+  // Auto-Correction State
+  const [appliedCorrections, setAppliedCorrections] = useState<FieldCorrection[]>([]);
+  const [showCorrectionsDetails, setShowCorrectionsDetails] = useState(false);
+  const [fieldHints, setFieldHints] = useState<Record<string, string>>({});
+
+  // Detect auto-corrections from initial raw extraction
+  useEffect(() => {
+    try {
+      if (initialEnquiry.rawExtraction) {
+        const rawJson = JSON.parse(initialEnquiry.rawExtraction);
+        const r = rawJson.result || {};
+        const rawValues = {
+          enquiryDate: r.enquiry_date || "",
+          leadId: r.lead_id || "",
+          customerName: r.customer_name || "",
+          contactNumber: r.contact_number || "",
+          emailId: r.email_id || "",
+          occupation: r.occupation || "",
+          occupationOther: r.occupation_other || "",
+          companyName: r.company_name || "",
+          designation: r.designation || "",
+          address: r.address || "",
+          leadSource: r.lead_source || "",
+          leadSourceOther: r.lead_source_other || "",
+          bookingTimeline: r.booking_timeline || "",
+          requiresBankFinance: r.requires_bank_finance || "Unknown",
+          hasClientSignature: Boolean(r.has_client_signature),
+          signatureReference: r.signature_reference || "",
+          officeDate: r.office_date || "",
+          officeTime: r.office_time || "",
+          allocatedTo: r.allocated_to || "",
+          attendedBy: r.attended_by || "",
+          officeRemarks: r.office_remarks || "",
+        };
+        const detected = applyAutoCorrectionRules(rawValues);
+        if (detected.corrections.length > 0) {
+          setAppliedCorrections(detected.corrections);
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [initialEnquiry.rawExtraction]);
 
   // Duplicate warning detection
   useEffect(() => {
@@ -222,6 +280,108 @@ export default function ReviewForm({
     }
   };
 
+  // 4. Auto-Clean All Fields using business rules
+  const handleAutoCleanAll = () => {
+    const result = applyAutoCorrectionRules(formData);
+    setFormData((prev) => ({
+      ...prev,
+      ...result.data,
+    }));
+    setAppliedCorrections(result.corrections);
+    if (result.corrections.length > 0) {
+      setFeedbackMessage({
+        type: "success",
+        text: `⚡ Form rules applied! ${result.corrections.length} field(s) automatically corrected (spaces removed in emails, suffixes standardized, phone numbers formatted, names title-cased).`,
+      });
+      setShowCorrectionsDetails(true);
+    } else {
+      setFeedbackMessage({
+        type: "info",
+        text: "All fields are already fully clean and standardized according to business rules.",
+      });
+    }
+  };
+
+  // Field onBlur Cleaners
+  const handleEmailBlur = () => {
+    if (!formData.emailId) return;
+    const res = cleanEmail(formData.emailId);
+    if (res.changed) {
+      setFormData((prev) => ({ ...prev, emailId: res.value }));
+      setFieldHints((prev) => ({ ...prev, emailId: "Auto-cleaned: spaces removed & suffix standardized" }));
+      setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n.emailId; return n; }), 4000);
+    }
+  };
+
+  const handlePhoneBlur = () => {
+    if (!formData.contactNumber) return;
+    const res = cleanContactNumber(formData.contactNumber);
+    if (res.changed) {
+      setFormData((prev) => ({ ...prev, contactNumber: res.value }));
+      setFieldHints((prev) => ({ ...prev, contactNumber: "Auto-cleaned: standard 10-digit format" }));
+      setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n.contactNumber; return n; }), 4000);
+    }
+  };
+
+  const handleCustomerNameBlur = () => {
+    if (!formData.customerName) return;
+    const res = cleanCustomerName(formData.customerName);
+    if (res.changed) {
+      setFormData((prev) => ({ ...prev, customerName: res.value }));
+      setFieldHints((prev) => ({ ...prev, customerName: "Auto-formatted: Title Case" }));
+      setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n.customerName; return n; }), 4000);
+    }
+  };
+
+  const handleDateBlur = (field: "enquiryDate" | "officeDate") => {
+    const val = formData[field];
+    if (!val) return;
+    const res = cleanDate(val);
+    if (res.changed) {
+      setFormData((prev) => ({ ...prev, [field]: res.value }));
+      setFieldHints((prev) => ({ ...prev, [field]: "Auto-formatted: DD/MM/YYYY" }));
+      setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n[field]; return n; }), 4000);
+    }
+  };
+
+  const handleTimeBlur = () => {
+    if (!formData.officeTime) return;
+    const res = cleanTime(formData.officeTime);
+    if (res.changed) {
+      setFormData((prev) => ({ ...prev, officeTime: res.value }));
+      setFieldHints((prev) => ({ ...prev, officeTime: "Auto-formatted: HH:MM AM/PM" }));
+      setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n.officeTime; return n; }), 4000);
+    }
+  };
+
+  const handleAddressBlur = () => {
+    if (!formData.address) return;
+    const res = cleanAddress(formData.address);
+    if (res.changed) {
+      setFormData((prev) => ({ ...prev, address: res.value }));
+      setFieldHints((prev) => ({ ...prev, address: "Auto-formatted address" }));
+      setTimeout(() => setFieldHints((prev) => { const n = { ...prev }; delete n.address; return n; }), 4000);
+    }
+  };
+
+  // Helper for rendering Auto-Correction badge
+  const renderCorrectionBadge = (fieldName: string) => {
+    const correction = appliedCorrections.find((c) => c.field === fieldName);
+    const hint = fieldHints[fieldName];
+
+    if (!correction && !hint) return null;
+
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200"
+        title={correction ? `Auto-corrected from "${correction.original}": ${correction.reason}` : hint}
+      >
+        <Sparkles className="w-2.5 h-2.5 text-blue-600" />
+        <span>{hint || "Auto-Corrected"}</span>
+      </span>
+    );
+  };
+
   // Helper for rendering confidence score badge
   const renderConfidenceBadge = (fieldName: string) => {
     const score = confidenceScores[fieldName];
@@ -330,6 +490,17 @@ export default function ReviewForm({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={handleAutoCleanAll}
+            disabled={isConfirming || isSavingDraft || isReExtracting}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 transition shadow-sm"
+            title="Auto-clean all fields using common-sense rules: strips spaces from email, standardizes suffix, formats phone digits, and title-cases names"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+            <span>Auto-Clean All</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleReExtract}
             disabled={isReExtracting || isConfirming || isSavingDraft}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-300 rounded text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-50 transition"
@@ -360,6 +531,60 @@ export default function ReviewForm({
           </button>
         </div>
       </div>
+
+      {/* Auto-Form Rules Summary Drawer */}
+      {appliedCorrections.length > 0 && (
+        <div className="mb-4 bg-blue-50/70 border border-blue-200 rounded-md p-3 text-xs text-blue-950">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="font-semibold text-blue-900">
+                Auto-Form Rules Active: {appliedCorrections.length} field(s) automatically standardized
+              </span>
+              <span className="text-[11px] text-blue-700 hidden sm:inline">
+                (spaces removed from emails, @domain suffixes repaired, phone digits cleaned, names formatted)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCorrectionsDetails(!showCorrectionsDetails)}
+              className="text-xs font-medium text-blue-700 hover:text-blue-900 flex items-center gap-1 underline underline-offset-2 ml-2"
+            >
+              <span>{showCorrectionsDetails ? "Hide Details" : "View Corrections"}</span>
+              {showCorrectionsDetails ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+
+          {showCorrectionsDetails && (
+            <div className="mt-3 pt-2.5 border-t border-blue-200/80 space-y-1.5">
+              <div className="grid grid-cols-12 font-medium text-[11px] text-blue-800 pb-1">
+                <span className="col-span-3">Field</span>
+                <span className="col-span-4">Raw Transcribed</span>
+                <span className="col-span-5">Auto-Cleaned Value</span>
+              </div>
+              {appliedCorrections.map((corr, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-12 text-[11px] items-center bg-white/80 p-1.5 rounded border border-blue-100"
+                >
+                  <span className="col-span-3 font-semibold text-neutral-800">{corr.fieldLabel}</span>
+                  <span className="col-span-4 font-mono text-neutral-500 line-through truncate pr-2">
+                    {corr.original || "(blank)"}
+                  </span>
+                  <div className="col-span-5 flex items-center gap-1.5 truncate">
+                    <span className="font-mono text-blue-900 font-medium truncate">{corr.corrected}</span>
+                    <span className="text-[10px] text-neutral-400 italic truncate">({corr.reason})</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Inline Feedback Banner */}
       {feedbackMessage && (
@@ -395,13 +620,17 @@ export default function ReviewForm({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">Enquiry Date</label>
-                {renderConfidenceBadge("enquiry_date")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("enquiryDate")}
+                  {renderConfidenceBadge("enquiry_date")}
+                </div>
               </div>
               <input
                 type="text"
                 placeholder="DD/MM/YYYY or YYYY-MM-DD"
                 value={formData.enquiryDate}
                 onChange={(e) => handleChange("enquiryDate", e.target.value)}
+                onBlur={() => handleDateBlur("enquiryDate")}
                 className="w-full px-2.5 py-1.5 text-xs border border-neutral-300 rounded focus:border-neutral-900 focus:outline-none transition"
               />
             </div>
@@ -412,7 +641,10 @@ export default function ReviewForm({
                 <label className="text-xs font-medium text-neutral-700">
                   Lead ID <span className="text-neutral-400 font-normal">(Preserved if on form)</span>
                 </label>
-                {renderConfidenceBadge("lead_id")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("leadId")}
+                  {renderConfidenceBadge("lead_id")}
+                </div>
               </div>
               <input
                 type="text"
@@ -429,7 +661,10 @@ export default function ReviewForm({
                 <label className="text-xs font-semibold text-neutral-900">
                   1. Customer Name <span className="text-red-500">*</span>
                 </label>
-                {renderConfidenceBadge("customer_name")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("customerName")}
+                  {renderConfidenceBadge("customer_name")}
+                </div>
               </div>
               <input
                 type="text"
@@ -437,6 +672,7 @@ export default function ReviewForm({
                 placeholder="Full name as written on paper"
                 value={formData.customerName}
                 onChange={(e) => handleChange("customerName", e.target.value)}
+                onBlur={handleCustomerNameBlur}
                 className={`w-full px-2.5 py-1.5 text-xs border rounded focus:outline-none transition ${
                   fieldErrors.customerName
                     ? "border-red-500 bg-red-50/50"
@@ -454,7 +690,10 @@ export default function ReviewForm({
                 <label className="text-xs font-semibold text-neutral-900">
                   2. Contact Number <span className="text-red-500">*</span>
                 </label>
-                {renderConfidenceBadge("contact_number")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("contactNumber")}
+                  {renderConfidenceBadge("contact_number")}
+                </div>
               </div>
               <input
                 type="text"
@@ -462,6 +701,7 @@ export default function ReviewForm({
                 placeholder="Phone digits (e.g. 9822012345)"
                 value={formData.contactNumber}
                 onChange={(e) => handleChange("contactNumber", e.target.value)}
+                onBlur={handlePhoneBlur}
                 className={`w-full px-2.5 py-1.5 text-xs font-mono border rounded focus:outline-none transition ${
                   fieldErrors.contactNumber
                     ? "border-red-500 bg-red-50/50"
@@ -477,13 +717,17 @@ export default function ReviewForm({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">3. Email Id</label>
-                {renderConfidenceBadge("email_id")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("emailId")}
+                  {renderConfidenceBadge("email_id")}
+                </div>
               </div>
               <input
-                type="email"
-                placeholder="customer@example.com"
+                type="text"
+                placeholder="customer@gmail.com"
                 value={formData.emailId}
                 onChange={(e) => handleChange("emailId", e.target.value)}
+                onBlur={handleEmailBlur}
                 className={`w-full px-2.5 py-1.5 text-xs border rounded focus:outline-none transition ${
                   fieldErrors.emailId
                     ? "border-red-500 bg-red-50/50"
@@ -499,7 +743,10 @@ export default function ReviewForm({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">4. Occupation</label>
-                {renderConfidenceBadge("occupation")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("occupation")}
+                  {renderConfidenceBadge("occupation")}
+                </div>
               </div>
               <select
                 value={formData.occupation}
@@ -535,7 +782,10 @@ export default function ReviewForm({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">5. Company Name</label>
-                {renderConfidenceBadge("company_name")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("companyName")}
+                  {renderConfidenceBadge("company_name")}
+                </div>
               </div>
               <input
                 type="text"
@@ -550,7 +800,10 @@ export default function ReviewForm({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">Designation</label>
-                {renderConfidenceBadge("designation")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("designation")}
+                  {renderConfidenceBadge("designation")}
+                </div>
               </div>
               <input
                 type="text"
@@ -565,13 +818,17 @@ export default function ReviewForm({
             <div className="sm:col-span-2 lg:col-span-3">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">6. Client Address</label>
-                {renderConfidenceBadge("address")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("address")}
+                  {renderConfidenceBadge("address")}
+                </div>
               </div>
               <textarea
                 rows={2}
                 placeholder="Residential or office address"
                 value={formData.address}
                 onChange={(e) => handleChange("address", e.target.value)}
+                onBlur={handleAddressBlur}
                 className="w-full px-2.5 py-1.5 text-xs border border-neutral-300 rounded focus:border-neutral-900 focus:outline-none transition resize-none"
               />
             </div>
@@ -594,7 +851,10 @@ export default function ReviewForm({
                 <label className="text-xs font-medium text-neutral-700">
                   7. How did you know about our project?
                 </label>
-                {renderConfidenceBadge("lead_source")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("leadSource")}
+                  {renderConfidenceBadge("lead_source")}
+                </div>
               </div>
               <select
                 value={formData.leadSource}
@@ -632,7 +892,10 @@ export default function ReviewForm({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-neutral-700">8. I would like to book:</label>
-                {renderConfidenceBadge("booking_timeline")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("bookingTimeline")}
+                  {renderConfidenceBadge("booking_timeline")}
+                </div>
               </div>
               <select
                 value={formData.bookingTimeline}
@@ -653,7 +916,10 @@ export default function ReviewForm({
                 <label className="text-xs font-medium text-neutral-700">
                   9. Financial Assistance from Bank?
                 </label>
-                {renderConfidenceBadge("requires_bank_finance")}
+                <div className="flex items-center gap-1.5">
+                  {renderCorrectionBadge("requiresBankFinance")}
+                  {renderConfidenceBadge("requires_bank_finance")}
+                </div>
               </div>
               <select
                 value={formData.requiresBankFinance}
@@ -714,31 +980,42 @@ export default function ReviewForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* 16. Office Date */}
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Office Date</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-neutral-600">Office Date</label>
+                {renderCorrectionBadge("officeDate")}
+              </div>
               <input
                 type="text"
                 placeholder="Date on office section"
                 value={formData.officeDate}
                 onChange={(e) => handleChange("officeDate", e.target.value)}
+                onBlur={() => handleDateBlur("officeDate")}
                 className="w-full px-2.5 py-1.5 text-xs border border-neutral-300 rounded focus:border-neutral-900 focus:outline-none bg-white transition"
               />
             </div>
 
             {/* 17. Office Time */}
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Office Time</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-neutral-600">Office Time</label>
+                {renderCorrectionBadge("officeTime")}
+              </div>
               <input
                 type="text"
                 placeholder="Time on office section"
                 value={formData.officeTime}
                 onChange={(e) => handleChange("officeTime", e.target.value)}
+                onBlur={handleTimeBlur}
                 className="w-full px-2.5 py-1.5 text-xs border border-neutral-300 rounded focus:border-neutral-900 focus:outline-none bg-white transition"
               />
             </div>
 
             {/* 18. Allocated To */}
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Allocated to</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-neutral-600">Allocated to</label>
+                {renderCorrectionBadge("allocatedTo")}
+              </div>
               <input
                 type="text"
                 placeholder="Sales executive name"
@@ -750,7 +1027,10 @@ export default function ReviewForm({
 
             {/* 19. Attended By */}
             <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Attended by</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-neutral-600">Attended by</label>
+                {renderCorrectionBadge("attendedBy")}
+              </div>
               <input
                 type="text"
                 placeholder="Staff name"
@@ -762,7 +1042,10 @@ export default function ReviewForm({
 
             {/* 20. Remarks */}
             <div className="sm:col-span-2 lg:col-span-4">
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Office Remarks</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-neutral-600">Office Remarks</label>
+                {renderCorrectionBadge("officeRemarks")}
+              </div>
               <textarea
                 rows={2}
                 placeholder="Staff remarks from office section"
